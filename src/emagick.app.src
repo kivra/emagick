@@ -28,16 +28,7 @@
   {vsn, "0.1.0"},
   {modules, [emagick]},
   {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  uuid
-                 ]},
-  {mod, {emagick, []}},
-  {env,
-   [
-    {magick_command, "convert"},        %% ImageMagick
-    %{magick_command, "gm convert"},    %% GraphicsMagick
-    {working_directory, "/tmp/emagick"}
-   ]}
+  {applications, [kernel,
+                  stdlib]},
+  {mod, {emagick, []}}
  ]}.

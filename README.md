@@ -7,7 +7,7 @@ Simple wrapper for GraphicsMagick or ImageMagick using an Erlang port.
 
 Either GraphicsMagick or ImageMagick commandline tools are of course
 required. On a Debian based system install either `graphicsmagick` or
-`imagemagick` and then configure `magick_command` in `emagick.app.src`
+`imagemagick` and then configure `magick_prefix` in your app.config
 accordingly.
 
 Furthermore `rebar` and `git` are necessary to use the automatic build
@@ -26,9 +26,15 @@ Build and install with the supplied Makefile or use rebar. Simply typing
 
 ## Configuration
 
-It is possible to choose what \*magick command to run and what path to
-use as working directory (default `/tmp/emagick`). These setting are in
-`emagick.app.src`.
+It is possible to choose which \*magick command to run and what path to
+use as working directory (default `/tmp/emagick` if omitted) by
+configuring `magick_prefix` and `working_directory` in your app.config.
+
+    {emagick, [
+        {magick_prefix, ""},       %% ImageMagick
+        %{magick_prefix, "gm"},    %% GraphicsMagick
+        {working_directory, "/tmp/emagick"}
+    ]}.
 
 
 ## Example usage

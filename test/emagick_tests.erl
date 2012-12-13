@@ -31,12 +31,8 @@
 %% This test fails. Is PDF conversion non-determenistic?
 convert_test_() ->
     {setup,
-     fun() ->
-         application:start(emagick)
-     end,
-     fun(_) ->
-         application:stop(emagick)
-     end,
+     fun() -> ok end,
+     fun(_) -> ok end,
      fun(_) ->
         fun() ->
             {ok, PdfBin} = file:read_file("../test/test.pdf"),
