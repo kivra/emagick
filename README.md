@@ -30,10 +30,9 @@ use as working directory (default `/tmp/emagick`). These setting are in
 
 ## Example usage
 
-    1> application:start(emagick).
-    2> {ok, Pdf} = file:read_file("something.pdf").
-    3> {ok, Png} = emagick:convert(PDF, pdf, png, [{density, [200]}]).
-    4> ok = file:write_file("something.png", Png).
+    1> {ok, Pdf} = file:read_file("something.pdf").
+    2> {ok, Png} = emagick:convert(Pdf, pdf, png, [{density, 200}]).
+    3> ok = file:write_file("something.png", Png).
 
 
 ## License

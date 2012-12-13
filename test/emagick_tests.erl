@@ -41,7 +41,7 @@ convert_test_() ->
         fun() ->
             {ok, PdfBin} = file:read_file("../test/test.pdf"),
             {ok, ConvertedImage} =
-                emagick:convert(PdfBin, pdf, png, [{density, [200]}]),
+                emagick:convert(PdfBin, pdf, png, [{density, 200}]),
             {ok, PngBin} = file:read_file("../test/test.png"),
             ?assertEqual(PngBin, ConvertedImage)
         end
