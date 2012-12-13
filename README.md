@@ -10,6 +10,9 @@ required. On a Debian based system install either `graphicsmagick` or
 `imagemagick` and then configure `magick_command` in `emagick.app.src`
 accordingly.
 
+Furthermore `rebar` and `git` are necessary to use the automatic build
+system.
+
 The Erlang package erlang-uuid is another dependency
 
     http://gitorious.org/avtobiff/erlang-uuid.git
