@@ -123,7 +123,7 @@ run(Command, Opts) ->
 
 %% -----------------------------------------------------------------------------
 -spec format_opts(Opts) -> Result
-    when Opts   :: list(tuple(atom(), list(term))),
+    when Opts   :: list(tuple()),
          Result :: string().
 %%
 %% @doc
