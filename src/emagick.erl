@@ -28,21 +28,18 @@
 -export([convert/3, convert/4]).
 
 
-
 %% -----------------------------------------------------------------------------
--spec convert(InData, From, To) -> {ok, Out} | {error, Reason}
-    when InData :: binary(),
-         From   :: atom(), %% pdf | png | jpg | gif | ...
-         To     :: atom(), %% same as To
-         Out    :: binary(),
-         Reason :: string().
--spec convert(InData, From, To, Opts) -> {ok, Out} | {error, Reason}
-    when InData :: binary(),
-         From   :: atom(),
-         To     :: atom(),
-         Opts   :: list(tuple(atom(), term())),
-         Out    :: binary(),
-         Reason :: string().
+-spec convert(InData, From, To) -> {ok, OutData}
+    when InData  :: binary(),
+         From    :: atom(), %% pdf | png | jpg | gif | ...
+         To      :: atom(), %% same as To
+         OutData :: binary().
+-spec convert(InData, From, To, Opts) -> {ok, OutData}
+    when InData  :: binary(),
+         From    :: atom(),
+         To      :: atom(),
+         Opts    :: list(tuple()),
+         OutData :: binary().
 %%
 %% @doc
 %%      Convert indata with *Magick.
@@ -50,6 +47,27 @@
 %% -----------------------------------------------------------------------------
 convert(InData, From, To) -> convert(InData, From, To, []).
 convert(InData, From, To, Opts) ->
+    run(convert, [{indata, InData}, {from, From}, {to, To}, {opts, Opts}]).
+
+
+
+%% =============================================================================
+%%
+%% INTERNAL FUNCTIONS
+%%
+%% =============================================================================
+
+%% -----------------------------------------------------------------------------
+-spec run(Command, Opts) -> {ok, Result}
+    when Command :: atom(),
+         Opts :: list(tuple()),
+         Result :: binary().
+%%
+%% @doc
+%%      Format and execute the supplied *magick command.
+%% @end
+%% -----------------------------------------------------------------------------
+run(Command, Opts) ->
     %% create working directory if it does not exist already
     Workdir =
         case application:get_env(emagick, working_directory) of
@@ -58,6 +76,12 @@ convert(InData, From, To, Opts) ->
         end,
     %% add trailing slash to ensure path is dir
     ok = filelib:ensure_dir(Workdir ++ "/"),
+
+    %% get opts
+    InData  = proplists:get_value(indata, Opts),
+    From    = proplists:get_value(from, Opts),
+    To      = proplists:get_value(to, Opts),
+    CmdOpts = proplists:get_value(opts, Opts, ""),
 
     %% write input file to temporary location
     Filename = uuid:to_string(uuid:uuid4()),
@@ -68,13 +92,17 @@ convert(InData, From, To, Opts) ->
     ok = file:write_file(InFile, InData),
 
     %% convert magick
-    {ok, Magick} = application:get_env(emagick, magick_command),
-    Command =
-        string:join([Magick, format_opts(Opts), InFile, OutFile], " "),
+    MagickPrefix =
+        case application:get_env(emagick, magick_prefix) of
+            {ok, Prefix} -> Prefix;
+            undefined ->    ""
+        end,
+    PortCommand = string:join([MagickPrefix, atom_to_list(Command),
+                               format_opts(CmdOpts), InFile, OutFile], " "),
 
     %% execute as port
     PortOpts = [stream, use_stdio, exit_status, binary],
-    Port = erlang:open_port({spawn, Command}, PortOpts),
+    Port = erlang:open_port({spawn, PortCommand}, PortOpts),
 
     %% crash upon non-zero exit status
     {ok, _Data, 0} = receive_until_exit(Port, []),
