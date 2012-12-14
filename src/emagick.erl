@@ -38,7 +38,7 @@
     when InData  :: binary(),
          From    :: atom(),
          To      :: atom(),
-         Opts    :: list(tuple()),
+         Opts    :: proplists:proplist(),
          OutData :: binary().
 %%
 %% @doc
@@ -60,8 +60,8 @@ convert(InData, From, To, Opts) ->
 %% -----------------------------------------------------------------------------
 -spec run(Command, Opts) -> {ok, Result}
     when Command :: atom(),
-         Opts :: list(tuple()),
-         Result :: binary().
+         Opts    :: proplists:proplist(),
+         Result  :: binary().
 %%
 %% @doc
 %%      Format and execute the supplied *magick command.
@@ -123,7 +123,7 @@ run(Command, Opts) ->
 
 %% -----------------------------------------------------------------------------
 -spec format_opts(Opts) -> Result
-    when Opts   :: list(tuple()),
+    when Opts   :: proplists:proplist(),
          Result :: string().
 %%
 %% @doc
