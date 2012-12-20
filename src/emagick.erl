@@ -25,7 +25,7 @@
 -module(emagick).
 -author('Per Andersson').
 
--export([convert/3, convert/4]).
+-export([convert/3, convert/4, convert/5]).
 
 
 %% -----------------------------------------------------------------------------
@@ -40,14 +40,26 @@
          To      :: atom(),
          Opts    :: proplists:proplist(),
          OutData :: binary().
+-spec convert(InData, From, To, Opts, AppEnv) -> {ok, OutData}
+    when InData  :: binary(),
+         From    :: atom(),
+         To      :: atom(),
+         Opts    :: proplists:proplist(),
+         AppEnv  :: proplists:proplist(),
+         OutData :: binary().
 %%
 %% @doc
 %%      Convert indata with *Magick.
 %% @end
 %% -----------------------------------------------------------------------------
 convert(InData, From, To) -> convert(InData, From, To, []).
-convert(InData, From, To, Opts) ->
-    run(convert, [{indata, InData}, {from, From}, {to, To}, {opts, Opts}]).
+convert(InData, From, To, Opts) -> convert(InData, From, To, Opts, []).
+convert(InData, From, To, Opts, AppEnv) ->
+    run(convert, [{indata, InData},
+                  {from, From},
+                  {to, To},
+                  {opts, Opts},
+                  {app, AppEnv}]).
 
 
 
@@ -68,20 +80,18 @@ convert(InData, From, To, Opts) ->
 %% @end
 %% -----------------------------------------------------------------------------
 run(Command, Opts) ->
-    %% create working directory if it does not exist already
-    Workdir =
-        case application:get_env(emagick, working_directory) of
-            {ok, Dir} -> Dir;
-            undefined -> "/tmp/emagick"
-        end,
-    %% add trailing slash to ensure path is dir
-    ok = filelib:ensure_dir(Workdir ++ "/"),
-
     %% get opts
     InData  = proplists:get_value(indata, Opts),
     From    = proplists:get_value(from, Opts),
     To      = proplists:get_value(to, Opts),
     CmdOpts = proplists:get_value(opts, Opts, ""),
+    AppEnv  = proplists:get_value(app, Opts, []),
+
+    %% create working directory if it does not exist already
+    Workdir = proplists:get_value(working_directory, AppEnv, "/tmp/emagick"),
+
+    %% add trailing slash to ensure path is dir
+    ok = filelib:ensure_dir(Workdir ++ "/"),
 
     %% write input file to temporary location
     Filename = uuid:to_string(uuid:uuid4()),
@@ -92,11 +102,8 @@ run(Command, Opts) ->
     ok = file:write_file(InFile, InData),
 
     %% convert magick
-    MagickPrefix =
-        case application:get_env(emagick, magick_prefix) of
-            {ok, Prefix} -> Prefix;
-            undefined ->    ""
-        end,
+    MagickPrefix = proplists:get_value(magick_prefix, AppEnv, ""),
+
     PortCommand = string:join([MagickPrefix, atom_to_list(Command),
                                format_opts(CmdOpts), InFile, OutFile], " "),
 
