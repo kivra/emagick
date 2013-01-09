@@ -73,7 +73,7 @@ convert(InData, From, To, Opts, AppEnv) ->
 -spec run(Command, Opts) -> {ok, Result}
     when Command :: atom(),
          Opts    :: proplists:proplist(),
-         Result  :: binary().
+         Result  :: list(binary()).
 %%
 %% @doc
 %%      Format and execute the supplied *magick command.
@@ -87,6 +87,7 @@ run(Command, Opts) ->
     CmdOpts = proplists:get_value(opts, Opts, ""),
     AppEnv  = proplists:get_value(app, Opts, []),
 
+
     %% create working directory if it does not exist already
     Workdir = proplists:get_value(working_directory, AppEnv, "/tmp/emagick"),
 
@@ -96,7 +97,8 @@ run(Command, Opts) ->
     %% write input file to temporary location
     Filename = uuid:to_string(uuid:uuid4()),
     InFile  = Workdir ++ "/" ++ Filename ++ "." ++ atom_to_list(From),
-    OutFile = Workdir ++ "/" ++ Filename ++ "." ++ atom_to_list(To),
+    %% TODO template _%06d should be configurable
+    OutFile = Workdir ++ "/" ++ Filename ++ "_%06d" ++ "." ++ atom_to_list(To),
 
     %% dump indata to file to be consumed by command
     ok = file:write_file(InFile, InData),
@@ -118,14 +120,32 @@ run(Command, Opts) ->
         _ ->         true = erlang:port_close(Port)
     end,
 
-    %% read converted file
-    Result = {ok, _} = file:read_file(OutFile),
-
     %% cleanup
     file:delete(InFile),
-    file:delete(OutFile),
 
-    Result.
+    %% return converted file(s)
+    {ok, _} = read_converted_files(Workdir, To).
+
+
+%% -----------------------------------------------------------------------------
+-spec read_converted_files(Workdir, Suffix) -> {ok, Result}
+    when Workdir  :: string(),
+         Suffix :: atom(),
+         Result   :: list(binary()).
+%% @doc
+%%      Read converted files, delete them, and return file data.
+%% @end
+%% -----------------------------------------------------------------------------
+read_converted_files(Workdir, Suffix) ->
+    Files = filelib:wildcard(Workdir ++ "/*." ++ atom_to_list(Suffix)),
+    do_read_converted_files(lists:sort(Files), []).
+
+do_read_converted_files([], Acc) ->
+    {ok, lists:reverse(Acc)};
+do_read_converted_files([File|Files], Acc) ->
+    {ok, FileBin} = file:read_file(File),
+    file:delete(File),
+    do_read_converted_files(Files, [FileBin|Acc]).
 
 
 %% -----------------------------------------------------------------------------
