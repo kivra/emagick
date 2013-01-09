@@ -28,7 +28,8 @@ Build and install with the supplied Makefile or use rebar. Simply typing
 
 It is possible to choose which \*magick command to run and what path to
 use as working directory (default `/tmp/emagick` if omitted) by
-configuring `magick_prefix` and `working_directory` when you run emagick by passing a proplist with the below settings to convert/5.
+configuring `magick_prefix` and `working_directory` when you run emagick
+by passing a proplist with the below settings to convert/5.
 
         {magick_prefix, ""},       %% ImageMagick
         %{magick_prefix, "gm"},    %% GraphicsMagick
