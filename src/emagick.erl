@@ -95,7 +95,7 @@ run(Command, Opts) ->
     ok = filelib:ensure_dir(Workdir ++ "/"),
 
     %% write input file to temporary location
-    Filename = uuid:to_string(uuid:uuid4()),
+    Filename = uuid:uuid_to_string(uuid:get_v4()),
     InFile  = Workdir ++ "/" ++ Filename ++ "." ++ atom_to_list(From),
     %% TODO template _%06d should be configurable
     OutFile = Workdir ++ "/" ++ Filename ++ "_%06d" ++ "." ++ atom_to_list(To),
