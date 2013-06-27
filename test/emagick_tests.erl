@@ -39,7 +39,7 @@ convert_test_() ->
      fun(_) ->
         fun() ->
             {ok, PdfBin} = file:read_file("../test/test.pdf"),
-            {ok, <<Magic:64, _/binary>>} =
+            {ok, [<<Magic:64, _/binary>>]} =
                 emagick:convert(PdfBin, pdf, png, [{density, 200}]),
             ?assertEqual(?PNG_MAGIC, <<Magic:64>>)
         end
