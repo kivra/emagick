@@ -124,20 +124,22 @@ run(Command, Opts) ->
     file:delete(InFile),
 
     %% return converted file(s)
-    {ok, _} = read_converted_files(Workdir, To).
+    {ok, _} = read_converted_files(Workdir, Filename, To).
 
 
 %% -----------------------------------------------------------------------------
--spec read_converted_files(Workdir, Suffix) -> {ok, Result}
+-spec read_converted_files(Workdir, Filename, Suffix) -> {ok, Result}
     when Workdir  :: string(),
+         Filename :: string(),
          Suffix :: atom(),
          Result   :: list(binary()).
 %% @doc
 %%      Read converted files, delete them, and return file data.
 %% @end
 %% -----------------------------------------------------------------------------
-read_converted_files(Workdir, Suffix) ->
-    Files = filelib:wildcard(Workdir ++ "/*." ++ atom_to_list(Suffix)),
+read_converted_files(Workdir, Filename, Suffix) ->
+    Files = filelib:wildcard(Workdir ++ "/" ++ Filename ++ "*." ++
+                                 atom_to_list(Suffix)),
     do_read_converted_files(lists:sort(Files), []).
 
 do_read_converted_files([], Acc) ->
