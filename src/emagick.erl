@@ -26,7 +26,7 @@
 -author('Per Andersson').
 
 -export([convert/3, convert/4, convert/5]).
-
+-export ([imageinfo/1, imageinfo/2, imageinfo/3]).
 
 %% -----------------------------------------------------------------------------
 -spec convert(InData, From, To) -> {ok, OutData}
@@ -61,7 +61,21 @@ convert(InData, From, To, Opts, AppEnv) ->
                   {opts, Opts},
                   {app, AppEnv}]).
 
-
+-spec imageinfo(InData) -> {ok, proplists:proplist()}
+    when InData :: binary().
+-spec imageinfo(InData, Opts) -> {ok, proplists:proplist()}
+    when InData :: binary(),
+         Opts   :: proplists:proplist().
+-spec imageinfo(InData, Opts, AppEnv) -> {ok, proplists:proplist()}
+    when InData :: binary(),
+         Opts   :: proplists:proplist(),
+         AppEnv :: proplists:proplist().
+imageinfo(InData) -> imageinfo(InData, []).
+imageinfo(InData, Opts) -> imageinfo(InData, Opts, []).
+imageinfo(InData, Opts, AppEnv) ->
+    run(imageinfo, [{indata, InData},
+                    {opts, Opts},
+                    {app, AppEnv}]).
 
 %% =============================================================================
 %%
@@ -79,7 +93,45 @@ convert(InData, From, To, Opts, AppEnv) ->
 %%      Format and execute the supplied *magick command.
 %% @end
 %% -----------------------------------------------------------------------------
-run(Command, Opts) ->
+run(imageinfo, Opts) ->
+    InData  = proplists:get_value(indata, Opts),
+    CmdOpts = proplists:get_value(opts, Opts, ""),
+    AppEnv  = proplists:get_value(app, Opts, []),
+
+    Workdir = proplists:get_value(working_directory, AppEnv, "/tmp/emagick"),
+
+    ok = filelib:ensure_dir(Workdir ++ "/"),
+
+    Filename = uuid:uuid_to_string(uuid:get_v4()),
+    InFile = Workdir ++ "/" ++ Filename,
+
+    ok = file:write_file(InFile, InData),
+
+    try
+        MagickPrefix = proplists:get_value(magick_prefix, AppEnv, ""),
+
+        PortCommand = string:join([MagickPrefix, "convert", format_opts(CmdOpts), InFile, "info:"], " "),
+
+        PortOpts = [stream, use_stdio, exit_status, binary],
+        Port = erlang:open_port({spawn, PortCommand}, PortOpts),
+
+        {ok, Data, 0} = receive_until_exit(Port, []),
+        case erlang:port_info(Port) of
+            undefined -> ok;
+            _ ->         true = erlang:port_close(Port)
+        end,
+
+        %test.jpg JPEG 1500x1000 1500x1000+0+0 8-bit sRGB 573KB 0.040u 0:00.039
+        [_, Fmt, Dims | _] = binary:split(Data, <<" ">>, [trim, global]),
+        [W,H] = lists:map(fun(X) -> list_to_integer(binary_to_list(X)) end, binary:split(Dims, <<"x">>)),
+        {ok, [{format, Fmt}, 
+              {dimensions, {W, H}}]}
+    catch
+        Err -> {error, Err}
+    after
+        file:delete(InFile)
+    end;
+run(convert=Command, Opts) ->
     %% get opts
     InData  = proplists:get_value(indata, Opts),
     From    = proplists:get_value(from, Opts),
@@ -103,28 +155,34 @@ run(Command, Opts) ->
     %% dump indata to file to be consumed by command
     ok = file:write_file(InFile, InData),
 
-    %% convert magick
-    MagickPrefix = proplists:get_value(magick_prefix, AppEnv, ""),
+    try
+        %% convert magick
+        MagickPrefix = proplists:get_value(magick_prefix, AppEnv, ""),
 
-    PortCommand = string:join([MagickPrefix, atom_to_list(Command),
-                               format_opts(CmdOpts), InFile, OutFile], " "),
+        PortCommand = string:join([MagickPrefix, atom_to_list(Command),
+                                   format_opts(CmdOpts), InFile, OutFile], " "),
 
-    %% execute as port
-    PortOpts = [stream, use_stdio, exit_status, binary],
-    Port = erlang:open_port({spawn, PortCommand}, PortOpts),
+        %% execute as port
+        PortOpts = [stream, use_stdio, exit_status, binary],
+        Port = erlang:open_port({spawn, PortCommand}, PortOpts),
 
-    %% crash upon non-zero exit status
-    {ok, _Data, 0} = receive_until_exit(Port, []),
-    case erlang:port_info(Port) of
-        undefined -> ok;
-        _ ->         true = erlang:port_close(Port)
-    end,
+        %% crash upon non-zero exit status
+        {ok, _Data, 0} = receive_until_exit(Port, []),
+        case erlang:port_info(Port) of
+            undefined -> ok;
+            _ ->         true = erlang:port_close(Port)
+        end,
+        %% cleanup
+        file:delete(InFile),
 
-    %% cleanup
-    file:delete(InFile),
-
-    %% return converted file(s)
-    {ok, _} = read_converted_files(Workdir, Filename, To).
+        %% return converted file(s)
+        {ok, _} = read_converted_files(Workdir, Filename, To)
+    catch
+        Err -> {error, Err}
+    after
+        %% cleanup
+        file:delete(InFile)
+    end.
 
 
 %% -----------------------------------------------------------------------------

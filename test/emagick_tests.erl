@@ -32,15 +32,28 @@
 
 
 %% @doc Test that converting PDF to PNG results in a PNG image.
+image_info_test_() ->
+    {setup,
+        fun() -> os:cmd("convert logo: ../test/logo.gif"), ok end,
+        fun(_) -> ok end,
+        fun(_) ->
+            fun() ->
+                {ok, GifBin} = file:read_file("../test/logo.gif"),
+                {ok, Info} = emagick:imageinfo(GifBin),
+                Expected = [{format, <<"GIF">>}, {dimensions, {640, 480}}],
+                ?assertEqual(Info, Expected)
+            end
+        end}.
 convert_test_() ->
     {setup,
-     fun() -> ok end,
+     fun() -> os:cmd("convert logo: ../test/logo.gif"), ok end,
      fun(_) -> ok end,
      fun(_) ->
         fun() ->
-            {ok, PdfBin} = file:read_file("../test/test.pdf"),
+            {ok, Bin} = file:read_file("../test/logo.gif"),
             {ok, [<<Magic:64, _/binary>>]} =
-                emagick:convert(PdfBin, pdf, png, [{density, 200}]),
+                emagick:convert(Bin, gif, png, [{density, 200}]),
             ?assertEqual(?PNG_MAGIC, <<Magic:64>>)
         end
     end}.
+
