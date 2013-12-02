@@ -29,6 +29,5 @@
   {modules, [emagick]},
   {registered, []},
   {applications, [kernel,
-                  stdlib]},
-  {mod, {emagick, []}}
+                  stdlib]}
  ]}.
