@@ -34,6 +34,17 @@
 -define (MAGICK_PFX (AppEnv), proplists:get_value(magick_prefix, AppEnv, "")).
 %% -----------------------------------------------------------------------------
 
+-spec with(InData, From, Funs) -> {ok, Result}
+    when InData :: binary(),
+         From   :: atom(),
+         Funs   :: list(function()),
+         Result :: term().
+-spec with(InData, From, Funs, AppEnv) -> {ok, Result}
+    when InData :: binary(),
+         From   :: atom(),
+         Funs   :: list(function()),
+         AppEnv :: proplists:proplist(),
+         Result :: term().
 %%
 %% @doc
 %%      Call functions in a session with *Magick
@@ -47,20 +58,55 @@ with(InData, From, Funs, AppEnv) ->
     InFile = WorkDir ++ "/" ++ Filename ++ "." ++ atom_to_list(From),
     ok = file:write_file(InFile, InData),
     % Res = call_funs(Funs, {InFile, AppEnv}),
-    try lists:foldl(fun (Fun, Arg) -> Fun(Arg) end, {InFile, [{filename, Filename} | AppEnv]}, Funs) of
+    try lists:foldl(fun (Fun, Arg) -> Fun(Arg) end, {InFile, [{filename, Filename}, {from, From} | AppEnv]}, Funs) of
         Res -> Res
     catch Err -> {error, Err}
     after
         file:delete(InFile)
     end.
 
+-spec with_imageinfo(Args) -> {Args, Info}
+    when Args   :: {InFile, AppEnv},
+         InFile :: string(),
+         AppEnv :: proplists:proplist(),
+         Info   :: proplists:proplist().
+-spec with_imageinfo(Args, Opts) -> {Args, Info}
+    when Args   :: {InFile, AppEnv},
+         InFile :: string(),
+         AppEnv :: proplists:proplist(),
+         Opts   :: proplists:proplist(),
+         Info   :: proplists:proplist().
+%%
+%% @doc
+%%      Within a session, get the input file metadata
+%% @end
+%% -----------------------------------------------------------------------------
 with_imageinfo(Args) -> with_imageinfo(Args, []).
 with_imageinfo({InFile, AppEnv}, Opts) ->
     {ok, Res} = run_with(imageinfo, [{infile, InFile},
+                                     {from, proplists:get_value(from, AppEnv, xxx)},
                                      {opts, Opts},
                                      {app, AppEnv}]),
     {{InFile, AppEnv}, Res}.
 
+-spec with_convert(Args, To) -> {Args, Result}
+    when Args   :: {InFile, AppEnv},
+         InFile :: string(),
+         AppEnv :: proplists:proplist(),
+         To     :: atom(),
+         Result :: list(binary()).
+-spec with_convert(Args, To, Opts) -> {Args, Result}
+    when Args   :: {InFile, AppEnv},
+         InFile :: string(),
+         AppEnv :: proplists:proplist(),
+         To     :: atom(),
+         Opts   :: proplists:proplist(),
+         Result :: list(binary()).
+%%
+%% @doc
+%%      Within a session, convert the input file with *Magick.
+%% @end
+%% -----------------------------------------------------------------------------
 with_convert(Args, To) -> with_convert(Args, To, []).
 with_convert({InFile, AppEnv}, To, Opts) ->
     {ok, Res} = run_with(convert, [{infile, InFile},
@@ -95,11 +141,9 @@ with_convert({InFile, AppEnv}, To, Opts) ->
 convert(InData, From, To) -> convert(InData, From, To, []).
 convert(InData, From, To, Opts) -> convert(InData, From, To, Opts, []).
 convert(InData, From, To, Opts, AppEnv) ->
-    run(convert, [{indata, InData},
-                  {from, From},
-                  {to, To},
-                  {opts, Opts},
-                  {app, AppEnv}]).
+    CB = fun (Args) -> with_convert(Args, To, Opts) end,
+    {_, Converted} = with(InData, From, [CB], AppEnv),
+    {ok, Converted}.
 
 %%
 %% @doc
@@ -118,9 +162,9 @@ convert(InData, From, To, Opts, AppEnv) ->
 imageinfo(InData) -> imageinfo(InData, []).
 imageinfo(InData, Opts) -> imageinfo(InData, Opts, []).
 imageinfo(InData, Opts, AppEnv) ->
-    run(imageinfo, [{indata, InData},
-                    {opts, Opts},
-                    {app, AppEnv}]).
+    CB = fun (Args) -> with_imageinfo(Args, Opts) end,
+    {_, Info} = with(InData, xxx, [CB], AppEnv),
+    {ok, Info}.
 
 %% =============================================================================
 %%
@@ -129,6 +173,15 @@ imageinfo(InData, Opts, AppEnv) ->
 %% =============================================================================
 
 %% -----------------------------------------------------------------------------
+%%
+%% @doc
+%%      Format and execute the supplied *magick command in a 'session'.
+%% @end
+%% -----------------------------------------------------------------------------
+-spec run_with(Command, Opts) -> {ok, Result}
+    when Command :: atom(),
+         Opts    :: proplists:proplist(),
+         Result  :: {ok, list(binary())} | {ok, proplists:proplist()}.
 run_with(imageinfo, Opts) ->
     InFile = proplists:get_value(infile, Opts),
     CmdOpts = proplists:get_value(opts, Opts, ""),
@@ -177,105 +230,6 @@ run_with(convert, Opts) ->
 
     %% return converted file(s)
     {ok, _} = read_converted_files(Workdir, Filename, To, InFile).
-
--spec run(Command, Opts) -> {ok, Result}
-    when Command :: atom(),
-         Opts    :: proplists:proplist(),
-         Result  :: list(binary()).
-%%
-%% @doc
-%%      Format and execute the supplied *magick command.
-%% @end
-%% -----------------------------------------------------------------------------
-run(imageinfo, Opts) ->
-    InData  = proplists:get_value(indata, Opts),
-    CmdOpts = proplists:get_value(opts, Opts, ""),
-    AppEnv  = proplists:get_value(app, Opts, []),
-
-    Workdir = proplists:get_value(working_directory, AppEnv, "/tmp/emagick"),
-
-    ok = filelib:ensure_dir(Workdir ++ "/"),
-
-    Filename = uuid:uuid_to_string(uuid:get_v4()),
-    InFile = Workdir ++ "/" ++ Filename,
-
-    ok = file:write_file(InFile, InData),
-
-    try
-        MagickPrefix = proplists:get_value(magick_prefix, AppEnv, ""),
-
-        PortCommand = string:join([MagickPrefix, "convert", format_opts(CmdOpts), InFile, "info:"], " "),
-
-        PortOpts = [stream, use_stdio, exit_status, binary],
-        Port = erlang:open_port({spawn, PortCommand}, PortOpts),
-
-        {ok, Data, 0} = receive_until_exit(Port, []),
-        case erlang:port_info(Port) of
-            undefined -> ok;
-            _ ->         true = erlang:port_close(Port)
-        end,
-
-        %test.jpg JPEG 1500x1000 1500x1000+0+0 8-bit sRGB 573KB 0.040u 0:00.039
-        [_, Fmt, Dims | _] = binary:split(Data, <<" ">>, [trim, global]),
-        [W,H] = lists:map(fun(X) -> list_to_integer(binary_to_list(X)) end, binary:split(Dims, <<"x">>)),
-        {ok, [{format, Fmt}, 
-              {dimensions, {W, H}}]}
-    catch
-        Err -> {error, Err}
-    after
-        file:delete(InFile)
-    end;
-run(convert=Command, Opts) ->
-    %% get opts
-    InData  = proplists:get_value(indata, Opts),
-    From    = proplists:get_value(from, Opts),
-    To      = proplists:get_value(to, Opts),
-    CmdOpts = proplists:get_value(opts, Opts, ""),
-    AppEnv  = proplists:get_value(app, Opts, []),
-
-
-    %% create working directory if it does not exist already
-    Workdir = proplists:get_value(working_directory, AppEnv, "/tmp/emagick"),
-
-    %% add trailing slash to ensure path is dir
-    ok = filelib:ensure_dir(Workdir ++ "/"),
-
-    %% write input file to temporary location
-    Filename = uuid:uuid_to_string(uuid:get_v4()),
-    InFile  = Workdir ++ "/" ++ Filename ++ "." ++ atom_to_list(From),
-    %% TODO template _%06d should be configurable
-    OutFile = Workdir ++ "/" ++ Filename ++ "_%06d" ++ "." ++ atom_to_list(To),
-
-    %% dump indata to file to be consumed by command
-    ok = file:write_file(InFile, InData),
-
-    try
-        %% convert magick
-        MagickPrefix = proplists:get_value(magick_prefix, AppEnv, ""),
-
-        PortCommand = string:join([MagickPrefix, atom_to_list(Command),
-                                   format_opts(CmdOpts), InFile, OutFile], " "),
-
-        %% execute as port
-        PortOpts = [stream, use_stdio, exit_status, binary],
-        Port = erlang:open_port({spawn, PortCommand}, PortOpts),
-
-        %% crash upon non-zero exit status
-        {ok, _Data, 0} = receive_until_exit(Port, []),
-        case erlang:port_info(Port) of
-            undefined -> ok;
-            _ ->         true = erlang:port_close(Port)
-        end,
-
-        %% return converted file(s)
-        {ok, _} = read_converted_files(Workdir, Filename, To, InFile)
-    catch
-        Err -> {error, Err}
-    after
-        %% cleanup
-        file:delete(InFile)
-    end.
-
 
 %% -----------------------------------------------------------------------------
 -spec read_converted_files(Workdir, Filename, Suffix, Except) -> {ok, Result}
