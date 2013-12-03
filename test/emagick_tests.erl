@@ -86,4 +86,16 @@ with_test_() ->
                 ?assertEqual(Info, Expected)
             end
         end}.
-
+with_fail_test_() ->
+    {setup,
+        fun() -> os:cmd("convert logo: ../test/logo.gif"), ok end,
+        fun(_) -> ok = file:delete("../test/logo.gif"), ok end,
+        fun(_) ->
+            fun() ->
+                {ok, Bin} = file:read_file("../test/logo.gif"),
+                {error, Err} = emagick:with(Bin, gif, [
+                    fun(_) -> throw(failing_test) end,
+                    fun emagick:with_imageinfo/1]),
+                ?assertEqual(Err, failing_test)
+            end
+        end}.
