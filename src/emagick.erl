@@ -27,8 +27,48 @@
 
 -export([convert/3, convert/4, convert/5]).
 -export ([imageinfo/1, imageinfo/2, imageinfo/3]).
+-export ([with/3, with/4, with_imageinfo/1, with_imageinfo/2, with_convert/2, with_convert/3]).
 
+-define (DEFAULT_WORKDIR, "/tmp/emagick").
+-define (WORKDIR (AppEnv), proplists:get_value(working_directory, AppEnv, ?DEFAULT_WORKDIR)).
+-define (MAGICK_PFX (AppEnv), proplists:get_value(magick_prefix, AppEnv, "")).
 %% -----------------------------------------------------------------------------
+
+%%
+%% @doc
+%%      Call functions in a session with *Magick
+%% @end
+%% -----------------------------------------------------------------------------
+with(InData, From, Funs) -> with(InData, From, Funs, []).
+with(InData, From, Funs, AppEnv) ->
+    WorkDir = ?WORKDIR(AppEnv),
+    ok = filelib:ensure_dir(WorkDir ++ "/"),
+    Filename = uuid:uuid_to_string(uuid:get_v4()),
+    InFile = WorkDir ++ "/" ++ Filename ++ "." ++ atom_to_list(From),
+    ok = file:write_file(InFile, InData),
+    % Res = call_funs(Funs, {InFile, AppEnv}),
+    try lists:foldl(fun (Fun, Arg) -> Fun(Arg) end, {InFile, [{filename, Filename} | AppEnv]}, Funs) of
+        Res -> Res
+    catch Err -> {error, Err}
+    after
+        file:delete(InFile)
+    end.
+
+with_imageinfo(Args) -> with_imageinfo(Args, []).
+with_imageinfo({InFile, AppEnv}, Opts) ->
+    {ok, Res} = run_with(imageinfo, [{infile, InFile},
+                                     {opts, Opts},
+                                     {app, AppEnv}]),
+    {{InFile, AppEnv}, Res}.
+
+with_convert(Args, To) -> with_convert(Args, To, []).
+with_convert({InFile, AppEnv}, To, Opts) ->
+    {ok, Res} = run_with(convert, [{infile, InFile},
+                                   {to, To},
+                                   {opts, Opts},
+                                   {app, AppEnv}]),
+    {{InFile, AppEnv}, Res}.
+
 -spec convert(InData, From, To) -> {ok, OutData}
     when InData  :: binary(),
          From    :: atom(), %% pdf | png | jpg | gif | ...
@@ -61,6 +101,11 @@ convert(InData, From, To, Opts, AppEnv) ->
                   {opts, Opts},
                   {app, AppEnv}]).
 
+%%
+%% @doc
+%%      Get indata info with *Magick.
+%% @end
+%% -----------------------------------------------------------------------------
 -spec imageinfo(InData) -> {ok, proplists:proplist()}
     when InData :: binary().
 -spec imageinfo(InData, Opts) -> {ok, proplists:proplist()}
@@ -84,6 +129,55 @@ imageinfo(InData, Opts, AppEnv) ->
 %% =============================================================================
 
 %% -----------------------------------------------------------------------------
+run_with(imageinfo, Opts) ->
+    InFile = proplists:get_value(infile, Opts),
+    CmdOpts = proplists:get_value(opts, Opts, ""),
+    AppEnv = proplists:get_value(app, Opts, []),
+
+    MagickPrefix = ?MAGICK_PFX(AppEnv),
+
+    PortCommand = string:join([MagickPrefix, "convert", format_opts(CmdOpts), InFile, "info:"], " "),
+    PortOpts = [stream, use_stdio, exit_status, binary],
+    Port = erlang:open_port({spawn, PortCommand}, PortOpts),
+
+    {ok, Data, 0} = receive_until_exit(Port, []),
+    case erlang:port_info(Port) of
+        undefined -> ok;
+        _         -> true = erlang:port_close(Port)
+    end,
+
+    [_, Fmt, Dims | _] = binary:split(Data, <<" ">>, [trim, global]),
+    [W,H] = lists:map(fun(X) -> list_to_integer(binary_to_list(X)) end, binary:split(Dims, <<"x">>)),
+    {ok, [{format, Fmt},
+          {dimensions, {W, H}}]};
+run_with(convert, Opts) ->
+    InFile = proplists:get_value(infile, Opts),
+    To = proplists:get_value(to, Opts),
+    CmdOpts = proplists:get_value(opts, Opts, ""),
+    AppEnv = proplists:get_value(app, Opts, []),
+
+    Filename = proplists:get_value(filename, AppEnv),
+    Workdir = ?WORKDIR(AppEnv),
+
+    MagickPrefix = ?MAGICK_PFX(AppEnv),
+    OutFile = Workdir ++ "/" ++ Filename ++ "_%06d" ++ "." ++ atom_to_list(To),
+    PortCommand = string:join([MagickPrefix, "convert",
+                                   format_opts(CmdOpts), InFile, OutFile], " "),
+
+    %% execute as port
+    PortOpts = [stream, use_stdio, exit_status, binary],
+    Port = erlang:open_port({spawn, PortCommand}, PortOpts),
+
+    %% crash upon non-zero exit status
+    {ok, _Data, 0} = receive_until_exit(Port, []),
+    case erlang:port_info(Port) of
+        undefined -> ok;
+        _ ->         true = erlang:port_close(Port)
+    end,
+
+    %% return converted file(s)
+    {ok, _} = read_converted_files(Workdir, Filename, To, InFile).
+
 -spec run(Command, Opts) -> {ok, Result}
     when Command :: atom(),
          Opts    :: proplists:proplist(),
@@ -172,11 +266,9 @@ run(convert=Command, Opts) ->
             undefined -> ok;
             _ ->         true = erlang:port_close(Port)
         end,
-        %% cleanup
-        file:delete(InFile),
 
         %% return converted file(s)
-        {ok, _} = read_converted_files(Workdir, Filename, To)
+        {ok, _} = read_converted_files(Workdir, Filename, To, InFile)
     catch
         Err -> {error, Err}
     after
@@ -186,18 +278,21 @@ run(convert=Command, Opts) ->
 
 
 %% -----------------------------------------------------------------------------
--spec read_converted_files(Workdir, Filename, Suffix) -> {ok, Result}
+-spec read_converted_files(Workdir, Filename, Suffix, Except) -> {ok, Result}
     when Workdir  :: string(),
          Filename :: string(),
          Suffix :: atom(),
+         Except :: string(),
          Result   :: list(binary()).
 %% @doc
 %%      Read converted files, delete them, and return file data.
 %% @end
 %% -----------------------------------------------------------------------------
-read_converted_files(Workdir, Filename, Suffix) ->
-    Files = filelib:wildcard(Workdir ++ "/" ++ Filename ++ "*." ++
+read_converted_files(Workdir, Filename, Suffix, Except) ->
+    Files0 = filelib:wildcard(Workdir ++ "/" ++ Filename ++ "*." ++
                                  atom_to_list(Suffix)),
+    Files = Files0 -- [Except],
+    io:format("AllFile: ~p~nToRead: ~p~n", [Files0, Files]),
     do_read_converted_files(lists:sort(Files), []).
 
 do_read_converted_files([], Acc) ->

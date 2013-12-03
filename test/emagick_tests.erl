@@ -56,4 +56,26 @@ convert_test_() ->
             ?assertEqual(?PNG_MAGIC, <<Magic:64>>)
         end
     end}.
+with_test_() ->
+    {setup,
+        fun() -> os:cmd("convert logo: ../test/logo.gif"), ok end,
+        fun(_) -> ok end,
+        fun(_) ->
+            fun() ->
+                {ok, Bin} = file:read_file("../test/logo.gif"),
+                [WN, HN, XN, YN] = [0.2, 0.2, 0.3, 0.4], % WxH+X+Y
+                {ok, [<<Magic:64, _/binary>>]} = emagick:with(Bin, gif,
+                    [fun (Args) ->
+                        {_, Info} = emagick:with_imageinfo(Args),
+                        {Args, proplists:get_value(dimensions, Info)}
+                     end,
+                     fun({Args, {W, H}}) ->
+                        Crop = [round(W*WN), round(H*HN), round(XN*W), round(YN*H)],
+                        Opts = [{crop, iolist_to_binary(io_lib:fwrite("~Bx~B+~B+~B\\!", Crop))}],
+                        {_, Converted} = emagick:with_convert(Args, png, Opts),
+                        {ok, Converted}
+                     end]),
+                ?assertEqual(?PNG_MAGIC, <<Magic:64>>)
+            end
+        end}.
 
