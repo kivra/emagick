@@ -178,10 +178,12 @@ imageinfo(InData, Opts, AppEnv) ->
 %%      Format and execute the supplied *magick command in a 'session'.
 %% @end
 %% -----------------------------------------------------------------------------
--spec run_with(Command, Opts) -> {ok, Result}
-    when Command :: atom(),
-         Opts    :: proplists:proplist(),
-         Result  :: {ok, list(binary())} | {ok, proplists:proplist()}.
+% -spec run_with(Command, Opts) -> {ok, Result}
+%     when Command :: atom(),
+%          Opts    :: proplists:proplist(),
+%          Result  :: {ok, list(binary())} | {ok, proplists:proplist()}.
+-spec run_with(imageinfo, proplists:proplist()) -> {ok, proplists:proplist()};
+              (convert, proplists:proplist()) -> {ok, list(binary())}.
 run_with(imageinfo, Opts) ->
     InFile = proplists:get_value(infile, Opts),
     CmdOpts = proplists:get_value(opts, Opts, ""),
@@ -246,7 +248,6 @@ read_converted_files(Workdir, Filename, Suffix, Except) ->
     Files0 = filelib:wildcard(Workdir ++ "/" ++ Filename ++ "*." ++
                                  atom_to_list(Suffix)),
     Files = Files0 -- [Except],
-    io:format("AllFile: ~p~nToRead: ~p~n", [Files0, Files]),
     do_read_converted_files(lists:sort(Files), []).
 
 do_read_converted_files([], Acc) ->
