@@ -286,7 +286,7 @@ to_string(E) when is_list(E) ->    E.
     when Port          :: port(),
          ReverseBuffer :: list(iolist()),
          Data          :: binary(),
-         Status        :: pos_integer().
+         Status        :: non_neg_integer().
 %%
 %% @doc
 %%      Receives until the given port exits.
